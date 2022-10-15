@@ -112,13 +112,15 @@ Eigen::Matrix4d ICP(PointCloudT::Ptr target, PointCloudT::Ptr source, Pose start
 	time.tic ();
   
 	pcl::IterativeClosestPoint<PointT, PointT> icp;
-	icp.setTransformationEpsilon(0.000001); //1e-8
+  
+	// Set parameters
+	icp.setTransformationEpsilon(1e-8); //1e-8
 	icp.setMaximumIterations (iterations);
 	icp.setInputSource (transformSource);
 	icp.setInputTarget (target);
-	icp.setMaxCorrespondenceDistance (2);
-	icp.setEuclideanFitnessEpsilon (.05);
-	icp.setRANSACOutlierRejectionThreshold (10);
+	//icp.setMaxCorrespondenceDistance (2);
+	//icp.setEuclideanFitnessEpsilon (.05);
+	//icp.setRANSACOutlierRejectionThreshold (10);
   
 	PointCloudT::Ptr cloud_icp (new PointCloudT);  // ICP output point cloud
 	icp.align(*cloud_icp);
@@ -133,9 +135,30 @@ Eigen::Matrix4d ICP(PointCloudT::Ptr target, PointCloudT::Ptr source, Pose start
 	return transformation_matrix;
 }
 
-//Eigen::Matrix4d NDT(PointCloudT::Ptr mapCloud, PointCloudT::Ptr source, Pose startingPose) {
+Eigen::Matrix4d NDT(PointCloudT::Ptr mapCloud, PointCloudT::Ptr source, Pose startingPose, int iterations) {
+	pcl::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ> ndt;
 
-//}
+	// Set parameters
+	ndt.setTransformationEpsilon (.001); //minimum tranformation difference for termination
+	ndt.setResolution(5); //resolution of NDT grid structure
+	ndt.setMaximumIterations (iterations);
+  
+	ndt.setInputTarget(mapCloud);
+	ndt.setInputSource (source);
+
+	pcl::console::TicToc time;
+	time.tic ();
+  
+	Eigen::Matrix4f init_guess = transform3D(startingPose.rotation.yaw, startingPose.rotation.pitch, startingPose.rotation.roll, startingPose.position.x, startingPose.position.y, startingPose.position.z).cast<float>();
+
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_ndt (new pcl::PointCloud<pcl::PointXYZ>);
+	ndt.align (*cloud_ndt, init_guess);
+
+	//cout << "NDT has converged: " << ndt.hasConverged () << " score: " << ndt.getFitnessScore () <<  " time: " << time.toc() <<  " ms" << endl;
+	Eigen::Matrix4d transformation_matrix = ndt.getFinalTransformation ().cast<double>();
+  
+	return transformation_matrix;
+}
 
 int main(){
 	// Declare variable to check if it is the first scan
@@ -258,8 +281,8 @@ int main(){
 			vg.filter(*cloudFiltered);
           
 			// TODO: Find pose transform by using ICP or NDT matching
-			Eigen::Matrix4d transform = ICP(mapCloud, cloudFiltered, pose, 5);
-			//Eigen::Matrix4d transform = NDT(mapCloud, cloudFiltered, pose, 100);
+			//Eigen::Matrix4d transform = ICP(mapCloud, cloudFiltered, pose, 60);
+			Eigen::Matrix4d transform = NDT(mapCloud, cloudFiltered, pose, 100);
           
 			pose = getPose(transform);
 
